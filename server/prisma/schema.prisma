@@ -29,3 +29,22 @@ model File {
   folderId     String?
   folder       Folder?  @relation(fields: [folderId], references: [id], onDelete: SetNull)
 }
+
+model Notebook {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  notes     Note[]
+}
+
+model Note {
+  id         String    @id @default(cuid())
+  title      String
+  subtitle   String?
+  content    String    @default("")
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  notebookId String?
+  notebook   Notebook? @relation(fields: [notebookId], references: [id], onDelete: SetNull)
+}

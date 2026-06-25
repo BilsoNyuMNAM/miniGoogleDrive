@@ -1,3 +1,4 @@
+ 
 require("dotenv").config();
 
 const express = require("express");
@@ -5,6 +6,8 @@ const cors = require("cors");
 const path = require("path");
 const fileRoutes = require("./routes/files");
 const folderRoutes = require("./routes/folders");
+const noteRoutes = require("./routes/notes");
+const notebookRoutes = require("./routes/notebooks");
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -28,6 +31,8 @@ app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 // ---------------------------------------------------------------------------
 app.use("/api/files", fileRoutes);
 app.use("/api/folders", folderRoutes);
+app.use("/api/notes", noteRoutes);
+app.use("/api/notebooks", notebookRoutes);
 
 // Health check
 app.get("/health", (_req, res) => {
