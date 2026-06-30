@@ -11,12 +11,14 @@
     "db:studio": "npx prisma studio"
   },
   "dependencies": {
+    "@notionhq/client": "^5.22.0",
     "@prisma/client": "^6.9.0",
     "@supabase/supabase-js": "^2.108.2",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "express": "^4.21.2",
-    "multer": "^1.4.5-lts.2"
+    "multer": "^1.4.5-lts.2",
+    "notion-to-md": "^3.1.9"
   },
   "devDependencies": {
     "nodemon": "^3.1.9",

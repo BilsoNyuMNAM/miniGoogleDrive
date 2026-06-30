@@ -4,6 +4,7 @@ export default function NoteSidebar({ notebook, activeNoteId, onSelectNote, onCr
   const [filterQuery, setFilterQuery] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [newNoteTitle, setNewNoteTitle] = useState('');
+  const [newNotionId, setNewNotionId] = useState('');
 
   if (!notebook) return null;
 
@@ -17,8 +18,9 @@ export default function NoteSidebar({ notebook, activeNoteId, onSelectNote, onCr
   const handleCreateNote = (e) => {
     e.preventDefault();
     if (newNoteTitle.trim()) {
-      onCreateNote(newNoteTitle.trim(), notebook.id);
+      onCreateNote(newNoteTitle.trim(), notebook.id, newNotionId.trim());
       setNewNoteTitle('');
+      setNewNotionId('');
       setIsCreating(false);
     }
   };
@@ -65,16 +67,29 @@ export default function NoteSidebar({ notebook, activeNoteId, onSelectNote, onCr
             autoFocus
             value={newNoteTitle}
             onChange={(e) => setNewNoteTitle(e.target.value)}
-            onBlur={() => {
-              if (!newNoteTitle.trim()) setIsCreating(false);
-            }}
             onKeyDown={(e) => {
               if (e.key === 'Escape') {
                 setIsCreating(false);
                 setNewNoteTitle('');
+                setNewNotionId('');
               }
             }}
           />
+          <input
+            type="text"
+            className="new-note-input notion-id-input"
+            placeholder="Notion Page ID (optional)"
+            value={newNotionId}
+            onChange={(e) => setNewNotionId(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setIsCreating(false);
+                setNewNoteTitle('');
+                setNewNotionId('');
+              }
+            }}
+          />
+          <button type="submit" style={{ display: 'none' }}>Submit</button>
         </form>
       )}
 
@@ -219,6 +234,11 @@ export default function NoteSidebar({ notebook, activeNoteId, onSelectNote, onCr
           color: var(--ink);
           font-family: var(--font-mono);
           font-size: 13px;
+        }
+
+        .notion-id-input {
+          margin-top: 8px;
+          border-color: var(--hairline-strong);
         }
 
         .note-sidebar-list {

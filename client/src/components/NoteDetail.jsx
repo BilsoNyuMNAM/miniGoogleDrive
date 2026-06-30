@@ -1,22 +1,25 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // BLOCK EDITOR — NoteDetail (v2)
 // ═══════════════════════════════════════════════════════════════════════════
 
 const C = {
-  bg: '#0d0d0f',
-  surface: '#131316',
-  surface2: '#1c1c21',
+  bg: '#000000',
+  surface: '#111111',
+  surface2: '#1a1a1a',
   border: '#2a2a31',
   accent: '#7c6fff',
   accentSoft: 'rgba(124,111,255,0.12)',
   accentBorder: 'rgba(124,111,255,0.25)',
-  text: '#e8e8ed',
-  muted: '#6b6b78',
-  dim: '#3a3a44',
-  code: '#b4b4c8',
-  para: '#c4c4cc',
+  text: '#ffffff',
+  muted: '#8b8b98',
+  dim: '#4a4a54',
+  code: '#d4d4e8',
+  para: '#f0f0f0',
 };
 
 /* ─── Helpers ─── */
@@ -49,6 +52,8 @@ function mdToBlocks(text) {
     const l = lines[i];
     if (l.startsWith('# ')) { blocks.push({ id: uid(), type: 'heading', value: l.slice(2) }); i++; continue; }
     if (l.startsWith('## ')) { blocks.push({ id: uid(), type: 'subheading', value: l.slice(3) }); i++; continue; }
+    if (l.startsWith('### ')) { blocks.push({ id: uid(), type: 'heading3', value: l.slice(4) }); i++; continue; }
+    if (l.startsWith('#### ')) { blocks.push({ id: uid(), type: 'heading4', value: l.slice(5) }); i++; continue; }
     if (l.startsWith('> ')) { blocks.push({ id: uid(), type: 'callout', value: l.slice(2), icon: '💡' }); i++; continue; }
     if (l.startsWith('```')) {
       const cl = []; i++;
@@ -65,6 +70,11 @@ function mdToBlocks(text) {
     if (l.trim() === '') { i++; continue; }
     let pl = [];
     while (i < lines.length && lines[i].trim() !== '' && !/^[#>!`]/.test(lines[i])) { pl.push(lines[i]); i++; }
+    if (pl.length === 0) {
+      // Prevent infinite loop on unhandled special characters
+      pl.push(lines[i]);
+      i++;
+    }
     blocks.push({ id: uid(), type: 'paragraph', value: pl.join('\n') });
   }
   return blocks.length ? blocks : [{ id: uid(), type: 'paragraph', value: '' }];
@@ -85,6 +95,8 @@ function newBlock(type) {
 const BLOCK_TYPES = [
   { type: 'heading', label: 'H1 Heading', icon: 'H1' },
   { type: 'subheading', label: 'H2 Sub-heading', icon: 'H2' },
+  { type: 'heading3', label: 'H3 Heading', icon: 'H3' },
+  { type: 'heading4', label: 'H4 Heading', icon: 'H4' },
   { type: 'paragraph', label: 'Paragraph', icon: '¶' },
   { type: 'code', label: 'Code Block', icon: '{ }' },
   { type: 'callout', label: 'Callout / Note', icon: '💡' },
@@ -132,6 +144,18 @@ function Block({ block, onChange, isEditing }) {
   if (block.type === 'subheading') {
     if (!isEditing) return <div className="bk-sub-view">{block.value || 'Untitled'}</div>;
     return <textarea ref={taRef} className="bk-sub" value={block.value || ''} onChange={onInput} placeholder="Sub-heading" rows={1} />;
+  }
+
+  // ── Heading 3 ──
+  if (block.type === 'heading3') {
+    if (!isEditing) return <div className="bk-h3-view">{block.value || 'Untitled'}</div>;
+    return <textarea ref={taRef} className="bk-h3" value={block.value || ''} onChange={onInput} placeholder="Heading 3" rows={1} />;
+  }
+
+  // ── Heading 4 ──
+  if (block.type === 'heading4') {
+    if (!isEditing) return <div className="bk-h4-view">{block.value || 'Untitled'}</div>;
+    return <textarea ref={taRef} className="bk-h4" value={block.value || ''} onChange={onInput} placeholder="Heading 4" rows={1} />;
   }
 
   // ── Paragraph ──
@@ -258,38 +282,61 @@ export default function NoteDetail({ notebook, note, onUpdateNote, onDeleteNote 
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState('');
   const [editSubtitle, setEditSubtitle] = useState('');
+  const [editNotionId, setEditNotionId] = useState('');
   const [blocks, setBlocks] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [dragIdx, setDragIdx] = useState(null);
   const [dragOverIdx, setDragOverIdx] = useState(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncError, setSyncError] = useState('');
   const titleRef = useRef(null);
 
   useEffect(() => {
     if (note) {
       setEditTitle(note.title || '');
       setEditSubtitle(note.subtitle || '');
-      setBlocks(parseContent(note.content));
+      setEditNotionId(note.notionId || '');
+      setBlocks(note.notionId ? [] : parseContent(note.content));
       setIsEditing(false);
+      setSyncError('');
     }
-  }, [note?.id]);
+  }, [note?.id, note?.notionId]);
 
   useEffect(() => { if (titleRef.current) autoH(titleRef.current); }, [editTitle, isEditing]);
+
+  const handleSyncNotion = async () => {
+    if (!note || !note.notionId) return;
+    setIsSyncing(true);
+    setSyncError('');
+    try {
+      const res = await fetch(`/api/notes/${note.id}/sync-notion`, { method: 'POST' });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      
+      // Update local state to trigger a refresh in App.jsx
+      await onUpdateNote(note.id, { content: data.content });
+    } catch(err) {
+      setSyncError(err.message);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const save = useCallback(async () => {
     if (!note || isSaving) return;
     setIsSaving(true);
     try {
-      await onUpdateNote(note.id, { title: editTitle, subtitle: editSubtitle, content: serialize(blocks) });
+      await onUpdateNote(note.id, { title: editTitle, subtitle: editSubtitle, notionId: editNotionId, content: serialize(blocks) });
       setIsEditing(false);
     } finally { setIsSaving(false); }
-  }, [note, editTitle, editSubtitle, blocks, isSaving, onUpdateNote]);
+  }, [note, editTitle, editSubtitle, editNotionId, blocks, isSaving, onUpdateNote]);
 
   const onKey = (e) => {
     if (e.key === 's' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); save(); }
     if (e.key === 'Escape' && isEditing) {
       setIsEditing(false);
-      if (note) { setEditTitle(note.title || ''); setEditSubtitle(note.subtitle || ''); setBlocks(parseContent(note.content)); }
+      if (note) { setEditTitle(note.title || ''); setEditSubtitle(note.subtitle || ''); setEditNotionId(note.notionId || ''); setBlocks(parseContent(note.content)); }
     }
   };
 
@@ -359,7 +406,7 @@ export default function NoteDetail({ notebook, note, onUpdateNote, onDeleteNote 
           {isEditing ? (
             <>
               <button className="nd-btn nd-save" onClick={save} disabled={isSaving}>{isSaving ? '...' : '✓ Save'}</button>
-              <button className="nd-btn" onClick={() => { setIsEditing(false); setEditTitle(note.title||''); setEditSubtitle(note.subtitle||''); setBlocks(parseContent(note.content)); }}>Cancel</button>
+              <button className="nd-btn" onClick={() => { setIsEditing(false); setEditTitle(note.title||''); setEditSubtitle(note.subtitle||''); setEditNotionId(note.notionId||''); setBlocks(parseContent(note.content)); }}>Cancel</button>
             </>
           ) : (
             <>
@@ -402,16 +449,41 @@ export default function NoteDetail({ notebook, note, onUpdateNote, onDeleteNote 
             note.subtitle && <p className="nd-sub-v">{note.subtitle}</p>
           )}
 
-          {/* Meta */}
+          {/* Notion ID & Meta */}
+          {isEditing ? (
+            <input className="nd-sub-e" style={{ marginTop: -12 }} value={editNotionId} onChange={(e) => setEditNotionId(e.target.value)} placeholder="Notion Page ID (optional)..." />
+          ) : (
+            note.notionId && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                <div className="nd-notion-badge" style={{ marginBottom: 0 }}>
+                   🔗 Linked to Notion Page
+                </div>
+                <button className="nd-btn" onClick={handleSyncNotion} disabled={isSyncing} style={{ padding: '4px 10px', fontSize: 12, height: 'auto' }}>
+                  {isSyncing ? 'Syncing...' : '🔄 Sync from Notion'}
+                </button>
+              </div>
+            )
+          )}
+          
           {!isEditing && (
             <div className="nd-meta">
               Last edited {new Date(note.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
             </div>
           )}
 
-          {/* Blocks */}
-          <div className="nd-blocks">
-            {isEditing && <InsertDivider onInsert={(type) => insertAt(0, type)} />}
+          {/* Blocks / Content */}
+          {note.notionId && !isEditing ? (
+            <div className="nd-notion-content">
+              {syncError && <div style={{ color: '#ef4444', marginBottom: 12 }}>{syncError}</div>}
+              <div className="markdown-body">
+                <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
+                  {note.content || '*No content synced yet. Click "Sync from Notion" above.*'}
+                </ReactMarkdown>
+              </div>
+            </div>
+          ) : !editNotionId ? (
+            <div className="nd-blocks">
+              {isEditing && <InsertDivider onInsert={(type) => insertAt(0, type)} />}
 
             {blocks.map((block, idx) => (
               <React.Fragment key={block.id}>
@@ -437,10 +509,14 @@ export default function NoteDetail({ notebook, note, onUpdateNote, onDeleteNote 
                   </div>
                 </div>
 
-                {isEditing && <InsertDivider onInsert={(type) => insertAt(idx + 1, type)} />}
               </React.Fragment>
             ))}
-          </div>
+            </div>
+          ) : (
+            <div style={{ padding: '40px 0', textAlign: 'center', color: C.dim }}>
+               Blocks are disabled when a Notion ID is provided.
+            </div>
+          )}
         </div>
       </div>
 
@@ -511,6 +587,30 @@ const styles = `
 
 /* Meta */
 .nd-meta { font:400 12px 'Space Mono', monospace; color:${C.dim}; padding-bottom:24px; margin-bottom:28px; border-bottom:1px solid ${C.border}; }
+.nd-notion-badge { display:inline-flex; align-items:center; gap:6px; font:500 12px 'Inter', sans-serif; color:${C.accent}; background:${C.accentSoft}; padding:4px 10px; border-radius:12px; margin-bottom:16px; }
+
+/* Markdown Styles */
+.markdown-body { color: ${C.text}; font-family: 'Inter', sans-serif; line-height: 1.6; padding-bottom: 40px; }
+.markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 { font-family: 'Sora', sans-serif; margin-top: 24px; margin-bottom: 16px; font-weight: 600; line-height: 1.25; }
+.markdown-body p { margin-bottom: 16px; color: ${C.para}; }
+.markdown-body a { color: ${C.accent}; text-decoration: none; }
+.markdown-body a:hover { text-decoration: underline; }
+.markdown-body ul, .markdown-body ol { margin-bottom: 16px; padding-left: 24px; color: ${C.para}; }
+.markdown-body li { margin-bottom: 4px; }
+.markdown-body blockquote { margin: 0 0 16px; padding: 0 1em; color: ${C.muted}; border-left: 0.25em solid ${C.border}; }
+.markdown-body pre { background-color: ${C.surface}; padding: 16px; border-radius: 6px; overflow: auto; margin-bottom: 16px; border: 1px solid ${C.border}; }
+.markdown-body code { font-family: 'Space Mono', monospace; font-size: 13px; color: ${C.code}; }
+.markdown-body table { width: 100%; border-collapse: collapse; margin-bottom: 24px; font-size: 14px; }
+.markdown-body th, .markdown-body td { padding: 12px 16px; border: 1px solid ${C.border}; text-align: left; }
+.markdown-body th { background-color: ${C.surface2}; font-weight: 600; color: ${C.text}; }
+.markdown-body tr:nth-child(even) { background-color: ${C.surface}; }
+.markdown-body details { margin-bottom: 16px; padding: 12px 16px; background: ${C.surface}; border: 1px solid ${C.border}; border-radius: 8px; }
+.markdown-body summary { font-weight: 600; cursor: pointer; outline: none; list-style: none; display: flex; align-items: center; gap: 8px; }
+.markdown-body summary::before { content: '▶'; font-size: 10px; color: ${C.muted}; transition: transform 0.2s; }
+.markdown-body details[open] summary::before { transform: rotate(90deg); }
+.markdown-body summary:hover { color: ${C.text}; }
+.markdown-body details > *:not(summary) { margin-top: 12px; margin-left: 18px; padding-left: 12px; border-left: 2px solid ${C.border}; }
+
 
 /* ═══ BLOCKS ═══ */
 .nd-blocks { display:flex; flex-direction:column; }
@@ -664,6 +764,20 @@ const styles = `
   background:transparent; border:none; resize:none; overflow:hidden; outline:none; line-height:1.4;
 }
 .bk-sub::placeholder { color:${C.dim}; }
+
+/* Heading 3 */
+.bk-h3, .bk-h3-view {
+  display:block; width:100%; font:600 17px 'Sora', sans-serif; color:${C.text};
+  background:transparent; border:none; resize:none; overflow:hidden; outline:none; line-height:1.4;
+}
+.bk-h3::placeholder { color:${C.dim}; }
+
+/* Heading 4 */
+.bk-h4, .bk-h4-view {
+  display:block; width:100%; font:600 15px 'Sora', sans-serif; color:${C.text};
+  background:transparent; border:none; resize:none; overflow:hidden; outline:none; line-height:1.4;
+}
+.bk-h4::placeholder { color:${C.dim}; }
 
 /* Paragraph */
 .bk-para, .bk-para-view {

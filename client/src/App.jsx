@@ -338,12 +338,12 @@ export default function App() {
   };
 
   // Create note
-  const handleCreateNote = async (title, notebookId) => {
+  const handleCreateNote = async (title, notebookId, notionId = "") => {
     try {
       const res = await fetch('/api/notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, notebookId })
+        body: JSON.stringify({ title, notebookId, notionId })
       });
       if (res.ok) {
         const newNote = await res.json();
