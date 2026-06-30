@@ -17,6 +17,8 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",
-    "vite": "^5.1.0"
+    "puppeteer": "^25.2.1",
+    "vite": "^5.1.0",
+    "vite-plugin-node-polyfills": "^0.28.0"
   }
 }
